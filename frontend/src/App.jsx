@@ -1,44 +1,48 @@
-  const persistAuth = (userObj, tokenStr, remember = false) => {
-    try {
-      if (remember) {
-        if (userObj) localStorage.setItem("user", JSON.stringify(userObj));
-        if (tokenStr) localStorage.setItem("token", tokenStr);
-        sessionStorage.removeItem("user");
-        sessionStorage.removeItem("token");
-      } else {
-        if (userObj) sessionStorage.setItem("user", JSON.stringify(userObj));
-        if (tokenStr) sessionStorage.setItem("token", tokenStr);
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-      }
-      setUser(userObj || null);
-      setToken(tokenStr || null);
-    } catch (err) {
-      console.error("persistAuth error:", err);
-    }
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import Login from './components/Login';
+import Signup from './components/Signup';
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
+import Expense from './pages/Expense';
+import Income from './pages/Income';
+
+const App = () => {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
+
+  const saveAuth = (user, token) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setToken(token);
+    setUser(user);
   };
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+  };
 
-  // transaction helpers
-  const addTransaction = (newTransaction) =>
-    setTransactions((p) => [newTransaction, ...p]);
-  const editTransaction = (id, updatedTransaction) =>
-    setTransactions((p) =>
-      p.map((t) => (t.id === id ? { ...updatedTransaction, id } : t)),
-    );
-  const deleteTransaction = (id) =>
-    setTransactions((p) => p.filter((t) => t.id !== id));
-  const refreshTransactions = () =>
-    setTransactions(getTransactionsFromStorage());
+  const ProtectedRoute = () => {
+    if (!token) return <Navigate to="/login" replace />;
+    return <Layout logout={logout} user={user}><Outlet context={{ token }} /></Layout>;
+  };
 
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login setAuth={saveAuth} />} />
+        <Route path="/signup" element={<Signup setAuth={saveAuth} />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/expenses" element={<Expense />} />
+          <Route path="/incomes" element={<Income />} />
+        </Route>
+      </Routes>
+    </Router>
+  );
+};
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+export default App;

@@ -1,23 +1,44 @@
+const Expense = require("../models/expenseModel");
+const Income = require("../models/incomeModel");
 
+exports.getOverview = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const expenses = await Expense.find({ userId }).sort({ date: -1 });
+    const incomes = await Income.find({ userId }).sort({ date: -1 });
 
-    const monthlyIncome = incomes.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
-    const monthlyExpense = expenses.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
-    const savings = monthlyIncome - monthlyExpense;
-    const savingsRate = monthlyIncome === 0 ? 0 : Math.round((savings / monthlyIncome) * 100);
-
-    const recentTransactions = [
-      ...incomes.map((i) => ({ ...i, type: "income" })),
-      ...expenses.map((e) => ({ ...e, type: "expense" })),
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    const spendByCategory = {};
-    for (const exp of expenses) {
-      const cat = exp.category || "Other";
-      spendByCategory[cat] = (spendByCategory[cat] || 0) + Number(exp.amount || 0);
-    }
-
-    const expenseDistribution = Object.entries(spendByCategory).map(([category, amount]) => ({
+    const totalExpense = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+    const totalIncome = incomes.reduce((acc, curr) => acc + curr.amount, 0);
+    
+    // Monthly overview logic (simplified to all-time for this rebuild without start/end params)
+    const recentTransactions = [...expenses, ...incomes]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10);
+      
+    // Category distribution for expenses
+    const spendByCategoryMap = expenses.reduce((acc, curr) => {
+      acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+      return acc;
+    }, {});
+    
+    const expenseDistribution = Object.keys(spendByCategoryMap).map(category => ({
       category,
-      amount,
-      percent: monthlyExpense === 0 ? 0 : Math.round((amount / monthlyExpense) * 100),
+      amount: spendByCategoryMap[category]
     }));
+
+    res.json({
+      success: true,
+      data: {
+        monthlyIncome: totalIncome,
+        monthlyExpense: totalExpense,
+        savings: totalIncome - totalExpense,
+        expenseDistribution,
+        recentTransactions
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

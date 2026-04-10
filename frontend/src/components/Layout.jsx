@@ -1,270 +1,65 @@
-const CATEGORY_ICONS = {
-  Food: <Utensils className="w-4 h-4" />,
-  Housing: <Home className="w-4 h-4" />,
-  Transport: <Car className="w-4 h-4" />,
-  Shopping: <ShoppingCart className="w-4 h-4" />,
-  Entertainment: <Gift className="w-4 h-4" />,
-  Utilities: <Zap className="w-4 h-4" />,
-  Healthcare: <Activity className="w-4 h-4" />,
-  Salary: <ArrowUp className="w-4 h-4" />,
-  Freelance: <CreditCard className="w-4 h-4" />,
-  Savings: <PiggyBank className="w-4 h-4" />,
-};
+import { Link, useLocation } from 'react-router-dom';
+import { LayoutDashboard, Receipt, DollarSign, LogOut } from 'lucide-react';
 
-const filterTransactions = (transactions, frame) => {
-  const now = new Date();
-  const today = new Date(now).setHours(0, 0, 0, 0);
+const Layout = ({ children, logout, user }) => {
+  const location = useLocation();
+  const isActive = (path) => location.pathname === path;
 
-  switch (frame) {
-    case "daily":
-      return transactions.filter((t) => new Date(t.date) >= today);
-    case "weekly": {
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-      return transactions.filter((t) => new Date(t.date) >= startOfWeek);
-    }
-    case "monthly":
-      return transactions.filter(
-        (t) => new Date(t.date).getMonth() === now.getMonth()
-      );
-    default:
-      return transactions;
-  }
-};
+  return (
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <aside className="w-64 bg-white shadow-md rounded-r-2xl hidden md:flex flex-col flex-shrink-0">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-center">
+          <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">Expenso 💸</h1>
+        </div>
+        <nav className="flex-1 px-4 py-6 space-y-2">
+          <Link to="/" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive('/') ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-blue-500'}`}>
+            <LayoutDashboard size={20} /> <span className="font-medium">Dashboard</span>
+          </Link>
+          <Link to="/expenses" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive('/expenses') ? 'bg-blue-50 text-orange-600 shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-orange-500'}`}>
+            <Receipt size={20} /> <span className="font-medium">Expenses</span>
+          </Link>
+          <Link to="/incomes" className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive('/incomes') ? 'bg-blue-50 text-green-600 shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-green-500'}`}>
+            <DollarSign size={20} /> <span className="font-medium">Incomes</span>
+          </Link>
+        </nav>
+        <div className="p-4 border-t border-gray-100">
+          <div className="flex items-center justify-between px-2 mb-4 text-sm font-medium text-gray-700">
+            <span className="truncate">{user?.name}</span>
+          </div>
+          <button onClick={logout} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors">
+            <LogOut size={18} /> Logout
+          </button>
+        </div>
+      </aside>
 
-const safeArrayFromResponse = (res) => {
-  const body = res?.data;
-  if (!body) return [];
-  if (Array.isArray(body)) return body;
-  if (Array.isArray(body.data)) return body.data;
-  if (Array.isArray(body.incomes)) return body.incomes;
-  if (Array.isArray(body.expenses)) return body.expenses;
-  return [];
-};
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile Header */}
+        <header className="md:hidden bg-white shadow-sm px-6 py-4 flex justify-between items-center">
+          <h1 className="text-xl font-black bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">Expenso 💸</h1>
+          <button onClick={logout} className="text-red-500">
+            <LogOut size={20} />
+          </button>
+        </header>
 
-
-
-  const [transactions, setTransactions] = useState([]);
-  const [timeFrame, setTimeFrame] = useState("monthly");
-  const [loading, setLoading] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [showAllTransactions, setShowAllTransactions] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
-
-  const fetchTransactions = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const [incomeRes, expenseRes] = await Promise.all([
-        axios.get(`${API_BASE}/income/get`, { headers }),
-        axios.get(`${API_BASE}/expense/get`, { headers }),
-      ]);
-
-      const incomes = safeArrayFromResponse(incomeRes).map((i) => ({
-        ...i,
-        type: "income",
-      }));
-      const expenses = safeArrayFromResponse(expenseRes).map((e) => ({
-        ...e,
-        type: "expense",
-      }));
-
-      const allTransactions = [...incomes, ...expenses]
-        .map((t) => ({
-          id: t._id || t.id || t.id_str || Math.random().toString(36).slice(2),
-          description: t.description || t.title || t.note || "",
-          amount: t.amount != null ? Number(t.amount) : Number(t.value) || 0,
-          date: t.date || t.createdAt || new Date().toISOString(),
-          category: t.category || t.type || "Other",
-          type: t.type,
-          raw: t,
-        }))
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      setTransactions(allTransactions);
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error(
-        "Failed to fetch transactions",
-        err?.response || err.message || err
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addTransaction = async (transaction) => {
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const endpoint =
-        transaction.type === "income" ? "income/add" : "expense/add";
-      await axios.post(`${API_BASE}/${endpoint}`, transaction, { headers });
-      await fetchTransactions();
-      return true;
-    } catch (err) {
-      console.error(
-        "Failed to add transaction",
-        err?.response || err.message || err
-      );
-      throw err;
-    }
-  };
-
-  const editTransaction = async (id, transaction) => {
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const endpoint =
-        transaction.type === "income" ? "income/update" : "expense/update";
-      await axios.put(`${API_BASE}/${endpoint}/${id}`, transaction, {
-        headers,
-      });
-      await fetchTransactions();
-      return true;
-    } catch (err) {
-      console.error(
-        "Failed to edit transaction",
-        err?.response || err.message || err
-      );
-      throw err;
-    }
-  };
-
-  const deleteTransaction = async (id, type) => {
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const endpoint = type === "income" ? "income/delete" : "expense/delete";
-      await axios.delete(`${API_BASE}/${endpoint}/${id}`, { headers });
-      await fetchTransactions();
-      return true;
-    } catch (err) {
-      console.error(
-        "Failed to delete transaction",
-        err?.response || err.message || err
-      );
-      throw err;
-    }
-  };
-
-  useEffect(() => {
-    fetchTransactions();
-  }, []);
-
-  const filteredTransactions = useMemo(
-    () => filterTransactions(transactions, timeFrame),
-    [transactions, timeFrame]
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-4 md:p-8">
+          {children}
+        </div>
+        
+        {/* Mobile Nav */}
+        <nav className="md:hidden bg-white border-t border-gray-200 py-3 px-6 flex justify-between items-center pb-safe">
+          <Link to="/" className={`flex flex-col items-center p-2 rounded-lg ${isActive('/') ? 'text-blue-600' : 'text-gray-500'}`}>
+            <LayoutDashboard size={20} /> <span className="text-xs mt-1 font-medium">Home</span>
+          </Link>
+          <Link to="/expenses" className={`flex flex-col items-center p-2 rounded-lg ${isActive('/expenses') ? 'text-orange-600' : 'text-gray-500'}`}>
+            <Receipt size={20} /> <span className="text-xs mt-1 font-medium">Expenses</span>
+          </Link>
+          <Link to="/incomes" className={`flex flex-col items-center p-2 rounded-lg ${isActive('/incomes') ? 'text-green-600' : 'text-gray-500'}`}>
+            <DollarSign size={20} /> <span className="text-xs mt-1 font-medium">Incomes</span>
+          </Link>
+        </nav>
+      </main>
+    </div>
   );
-
-  const stats = useMemo(() => {
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-
-    const last30DaysTransactions = transactions.filter(
-      (t) => new Date(t.date) >= thirtyDaysAgo
-    );
-
-    const last30DaysIncome = last30DaysTransactions
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const last30DaysExpenses = last30DaysTransactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const allTimeIncome = transactions
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const allTimeExpenses = transactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const savingsRate =
-      last30DaysIncome > 0
-        ? Math.round(
-            ((last30DaysIncome - last30DaysExpenses) / last30DaysIncome) * 100
-          )
-        : 0;
-
-    const last60DaysAgo = new Date(now);
-    last60DaysAgo.setDate(now.getDate() - 60);
-
-    const previous30DaysTransactions = transactions.filter((t) => {
-      const date = new Date(t.date);
-      return date >= last60DaysAgo && date < thirtyDaysAgo;
-    });
-
-    const previous30DaysExpenses = previous30DaysTransactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const expenseChange =
-      previous30DaysExpenses > 0
-        ? Math.round(
-            ((last30DaysExpenses - previous30DaysExpenses) /
-              previous30DaysExpenses) *
-              100
-          )
-        : 0;
-
-    return {
-      totalTransactions: transactions.length,
-      last30DaysIncome,
-      last30DaysExpenses,
-      last30DaysSavings: last30DaysIncome - last30DaysExpenses,
-      allTimeIncome,
-      allTimeExpenses,
-      allTimeSavings: allTimeIncome - allTimeExpenses,
-      last30DaysCount: last30DaysTransactions.length,
-      savingsRate,
-      expenseChange,
-    };
-  }, [transactions]);
-
-  const timeFrameLabel = useMemo(
-    () =>
-      timeFrame === "daily"
-        ? "Today"
-        : timeFrame === "weekly"
-        ? "This Week"
-        : "This Month",
-    [timeFrame]
-  );
-
-  const outletContext = {
-    transactions: filteredTransactions,
-    addTransaction,
-    editTransaction,
-    deleteTransaction,
-    refreshTransactions: fetchTransactions,
-    timeFrame,
-    setTimeFrame,
-    lastUpdated,
-  };
-
-  const getSavingsRating = (rate) =>
-    rate > 30 ? "Excellent" : rate > 20 ? "Good" : "Needs improvement";
-
-  const topCategories = useMemo(
-    () =>
-      Object.entries(
-        transactions
-          .filter((t) => t.type === "expense")
-          .reduce((acc, t) => {
-            acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
-            return acc;
-          }, {})
-      )
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5),
-    [transactions]
-  );
-
-  const displayedTransactions = showAllTransactions
-    ? transactions
-    : transactions.slice(0, 4);
+};
+export default Layout;

@@ -1,453 +1,123 @@
-function toIsoWithClientTime(dateValue) {
-  if (!dateValue) {
-    return new Date().toISOString();
-  }
+import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import axios from 'axios';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { Wallet, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 
-  if (typeof dateValue === "string" && dateValue.length === 10) {
-    const now = new Date();
-    const hhmmss = now.toTimeString().slice(0, 8);
-    const combined = new Date(`${dateValue}T${hhmmss}`);
-    return combined.toISOString();
-  }
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#f26284', '#60a5fa'];
 
-  try {
-    return new Date(dateValue).toISOString();
-  } catch (err) {
-    return new Date().toISOString();
-  }
-}
-
-const Dashboard = () => 
-  const { 
-    transactions: outletTransactions = [], 
-    timeFrame = "monthly", 
-    setTimeFrame = () => {},
-    refreshTransactions 
-  } = useOutletContext();
-
-  const [showModal, setShowModal] = useState(false);
-  const [gaugeData, setGaugeData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [overviewMeta, setOverviewMeta] = useState({});
-  const [showAllIncome, setShowAllIncome] = useState(false);
-  const [showAllExpense, setShowAllExpense] = useState(false);
-
-  const [newTransaction, setNewTransaction] = useState({
-    date: new Date().toISOString().split("T")[0],
-    description: "",
-    amount: "",
-    type: "expense",
-    category: "Food",
-  });
-
-  const timeFrameRange = useMemo(() => getTimeFrameRange(timeFrame), [timeFrame]);
-  const prevTimeFrameRange = useMemo(() => getPreviousTimeFrameRange(timeFrame), [timeFrame]);
-
-  const isDateInRange = (date, start, end) => {
-    const transactionDate = new Date(date);
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    transactionDate.setHours(0, 0, 0, 0);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
-    
-    return transactionDate >= startDate && transactionDate <= endDate;
-  };
-
-  const filteredTransactions = useMemo(
-    () => (outletTransactions || []).filter((t) => 
-      isDateInRange(t.date, timeFrameRange.start, timeFrameRange.end)
-    ),
-    [outletTransactions, timeFrameRange]
-  );
-
-  const prevFilteredTransactions = useMemo(
-    () => (outletTransactions || []).filter((t) => 
-      isDateInRange(t.date, prevTimeFrameRange.start, prevTimeFrameRange.end)
-    ),
-    [outletTransactions, prevTimeFrameRange]
-  );
-
-  const currentTimeFrameData = useMemo(() => {
-    const data = calculateData(filteredTransactions);
-    data.savings = data.income - data.expenses;
-    return data;
-  }, [filteredTransactions]);
-
-  const prevTimeFrameData = useMemo(() => {
-    const data = calculateData(prevFilteredTransactions);
-    data.savings = data.income - data.expenses;
-    return data;
-  }, [prevFilteredTransactions]);
+const Dashboard = () => {
+  const { token } = useOutletContext();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const maxValues = {
-      income: Math.max(currentTimeFrameData.income, 5000),
-      expenses: Math.max(currentTimeFrameData.expenses, 3000),
-      savings: Math.max(Math.abs(currentTimeFrameData.savings), 2000),
-    };
-
-    setGaugeData([
-      { name: "Income", value: currentTimeFrameData.income, max: maxValues.income },
-      { name: "Spent", value: currentTimeFrameData.expenses, max: maxValues.expenses },
-      { name: "Savings", value: currentTimeFrameData.savings, max: maxValues.savings },
-    ]);
-  }, [currentTimeFrameData, timeFrame]);
-
-  const displayIncome =
-    timeFrame === "monthly" && typeof overviewMeta.monthlyIncome === "number"
-      ? overviewMeta.monthlyIncome
-      : currentTimeFrameData.income;
-
-  const displayExpenses =
-    timeFrame === "monthly" && typeof overviewMeta.monthlyExpense === "number"
-      ? overviewMeta.monthlyExpense
-      : currentTimeFrameData.expenses;
-
-  const displaySavings =
-    timeFrame === "monthly" && typeof overviewMeta.savings === "number"
-      ? overviewMeta.savings
-      : currentTimeFrameData.savings;
-
-  const expenseChange = useMemo(() => {
-    const prev = prevTimeFrameData.expenses;
-    const curr = displayExpenses;
-    if (!prev) {
-      if (!curr) return 0;
-      return 100;
-    }
-    return Math.round(((curr - prev) / prev) * 100);
-  }, [prevTimeFrameData, displayExpenses]);
-
-  const financialOverviewData = useMemo(() => {
-    if (
-      timeFrame === "monthly" &&
-      overviewMeta.expenseDistribution &&
-      Array.isArray(overviewMeta.expenseDistribution) &&
-      overviewMeta.expenseDistribution.length > 0
-    ) {
-      return overviewMeta.expenseDistribution.map((d) => ({
-        name: d.category,
-        value: Math.round(Number(d.amount) || 0),
-      }));
-    }
-
-    const categories = {};
-    filteredTransactions.forEach((transaction) => {
-      if (transaction.type === "expense") {
-        categories[transaction.category] =
-          (categories[transaction.category] || 0) + transaction.amount;
-      }
-    });
-
-    return Object.keys(categories).map((category) => ({
-      name: category,
-      value: Math.round(categories[category]),
-    }));
-  }, [filteredTransactions, overviewMeta, timeFrame]);
-
-  const serverRecent = overviewMeta.recentTransactions || [];
-  const serverRecentIncome = serverRecent
-    .filter((t) => t.type === "income")
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  const serverRecentExpense = serverRecent
-    .filter((t) => t.type === "expense")
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  const incomeTransactions = useMemo(
-    () => filteredTransactions
-      .filter((t) => t.type === "income")
-      .sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [filteredTransactions]
-  );
-
-  const expenseTransactions = useMemo(
-    () => filteredTransactions
-      .filter((t) => t.type === "expense")
-      .sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [filteredTransactions]
-  );
-
-  const incomeListForDisplay =
-    timeFrame === "monthly" && serverRecentIncome.length > 0
-      ? serverRecentIncome
-      : incomeTransactions;
-
-  const expenseListForDisplay =
-    timeFrame === "monthly" && serverRecentExpense.length > 0
-      ? serverRecentExpense
-      : expenseTransactions;
-
-  const displayedIncome = showAllIncome 
-    ? incomeListForDisplay 
-    : incomeListForDisplay.slice(0, 3);
-
-  const displayedExpense = showAllExpense 
-    ? expenseListForDisplay 
-    : expenseListForDisplay.slice(0, 3);
-
-    
-        const recent = (data.recentTransactions || []).map((item) => {
-          const typeFromServer =
-            item.type || (item.category ? "expense" : "income");
-          const amountNum = Number(item.amount) || 0;
-
-          const isoDate = item.date
-            ? new Date(item.date).toISOString()
-            : item.createdAt
-            ? new Date(item.createdAt).toISOString()
-            : new Date().toISOString();
-
-          return {
-            id: item._id || item.id || Date.now() + Math.random(),
-            date: isoDate,
-            description:
-              item.description ||
-              item.note ||
-              item.title ||
-              (typeFromServer === "income"
-                ? item.source || "Income"
-                : item.category || "Expense"),
-            amount: amountNum,
-            type: typeFromServer,
-            category:
-              item.category ||
-              (typeFromServer === "income" ? "Salary" : "Other"),
-            raw: item,
-          };
+    const fetchOverview = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/dashboard/overview`, {
+          headers: { Authorization: `Bearer ${token}` }
         });
-
-        setOverviewMeta((prev) => ({
-          ...prev,
-          monthlyIncome: Number(data.monthlyIncome || 0),
-          monthlyExpense: Number(data.monthlyExpense || 0),
-          savings:
-            typeof data.savings !== "undefined"
-              ? Number(data.savings)
-              : Number(data.monthlyIncome || 0) - Number(data.monthlyExpense || 0),
-          savingsRate:
-            typeof data.savingsRate !== "undefined" ? data.savingsRate : null,
-          spendByCategory: data.spendByCategory || {},
-          expenseDistribution: data.expenseDistribution || [],
-          recentTransactions: recent,
-        }));
-
-        if (timeFrame === "monthly") {
-          const monthlyIncome = Number(data.monthlyIncome || 0);
-          const monthlyExpense = Number(data.monthlyExpense || 0);
-          const savings =
-            typeof data.savings !== "undefined"
-              ? Number(data.savings)
-              : monthlyIncome - monthlyExpense;
-
-          const maxValues = {
-            income: Math.max(monthlyIncome, 5000),
-            expenses: Math.max(monthlyExpense, 3000),
-            savings: Math.max(Math.abs(savings), 2000),
-          };
-
-          setGaugeData([
-            { name: "Income", value: monthlyIncome, max: maxValues.income },
-            { name: "Spent", value: monthlyExpense, max: maxValues.expenses },
-            { name: "Savings", value: savings, max: maxValues.savings },
-          ]);
-        }
-      } else {
-        console.warn("Dashboard endpoint returned success:false", res?.data);
+        setData(res.data.data);
+      } catch (err) {
+        console.error('Failed to fetch overview', err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch dashboard overview:", err?.response || err.message || err);
-    }
-  };
+    };
+    fetchOverview();
+  }, [token]);
 
+  if (loading) return <div className="p-8 text-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div></div>;
+  if (!data) return <div className="p-8 text-center text-red-500">Failed to load data</div>;
 
-    {/* Expense distribution pie - Hidden on mobile */}
-      <div className={dashboardStyles.pieChartContainer}>
-        <div className={dashboardStyles.pieChartHeader}>
-          <h3 className={dashboardStyles.pieChartTitle}>
-            <PieChartIcon className="w-6 h-6 text-teal-500" />
-            Expense Distribution
-            <span className={dashboardStyles.listSubtitle}> ({timeFrameRange.label})</span>
-          </h3>
+  return (
+    <div className="space-y-6">
+      <h2 className="text-3xl font-bold text-gray-800">Financial Overview</h2>
+      
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+            <Wallet size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Balance</p>
+            <h3 className="text-2xl font-bold text-gray-900">${data.savings.toLocaleString()}</h3>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+           <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-500">
+            <TrendingUp size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Income</p>
+            <h3 className="text-2xl font-bold text-gray-900">${data.monthlyIncome.toLocaleString()}</h3>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+           <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
+            <TrendingDown size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Expenses</p>
+            <h3 className="text-2xl font-bold text-gray-900">${data.monthlyExpense.toLocaleString()}</h3>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Chart */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">Expense Categories</h3>
+          {data.expenseDistribution?.length > 0 ? (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data.expenseDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="amount" label={({category, percent}) => `${category} ${(percent*100).toFixed(0)}%`}>
+                    {data.expenseDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `$${value}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-72 flex items-center justify-center text-gray-400">No expense data</div>
+          )}
         </div>
 
-        <div className={dashboardStyles.pieChartHeight}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart className={chartStyles.pieChart}>
-              <Pie
-                data={financialOverviewData}
-                cx="50%"
-                cy="50%"
-                innerRadius={70}
-                outerRadius={110}
-                paddingAngle={2}
-                dataKey="value"
-                label={({ name, percent }) =>
-                  `${name}: ${Math.round(percent * 100)}%`
-                }
-                labelLine={false}
-              >
-                {financialOverviewData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                    stroke="#fff"
-                    strokeWidth={2}
-                  />
+        {/* Recent Transactions */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col">
+          <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">Recent Transactions</h3>
+          <div className="flex-1 overflow-auto bg-gray-50/50 rounded-xl p-4">
+            {data.recentTransactions?.length > 0 ? (
+              <div className="space-y-4">
+                {data.recentTransactions.map(tx => (
+                  <div key={tx._id} className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-50">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                        {tx.type === 'income' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800">{tx.description}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> {new Date(tx.date).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <span className={`font-bold ${tx.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                      {tx.type === 'income' ? '+' : '-'}${tx.amount}
+                    </span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => [`$${Math.round(value).toLocaleString()}`, "Amount"]}
-                contentStyle={dashboardStyles.tooltipContent}
-                itemStyle={dashboardStyles.tooltipItem}
-              />
-              <Legend
-                layout="horizontal"
-                verticalAlign="bottom"
-                align="center"
-                formatter={(v) => (
-                  <span className={dashboardStyles.legendText}>{v}</span>
-                )}
-                iconSize={10}
-                iconType="circle"
-                wrapperStyle={dashboardStyles.legendWrapper}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className={dashboardStyles.listsGrid}>
-        {/* Income Column */}
-        <div className={dashboardStyles.listContainer}>
-          <div className={dashboardStyles.listHeader}>
-            <h3 className={dashboardStyles.listTitle}>
-              <ProfitIcon className="w-6 h-6 text-green-500" /> Recent Income{" "}
-              <span className={dashboardStyles.listSubtitle}> ({timeFrameRange.label})</span>
-            </h3>
-            <span className={dashboardStyles.incomeCountBadge}>
-              {incomeListForDisplay.length} records
-            </span>
-          </div>
-
-          <div className={dashboardStyles.transactionList}>
-            {displayedIncome.map((transaction) => {
-              const IconComponent = INCOME_CATEGORY_ICONS[transaction.category] || INCOME_CATEGORY_ICONS.Other;
-              return (
-                <div key={transaction.id} className={dashboardStyles.incomeTransactionItem}>
-                  <div className={dashboardStyles.transactionContent}>
-                    <div className={dashboardStyles.incomeIconContainer}>
-                      {IconComponent}
-                    </div>
-                    <div>
-                      <p className={dashboardStyles.transactionDescription}>{transaction.description}</p>
-                      <p className={dashboardStyles.transactionCategory}>{transaction.category}</p>
-                    </div>
-                  </div>
-                  <div className={dashboardStyles.transactionAmount}>
-                    <p className={dashboardStyles.incomeAmount}>+${Math.abs(transaction.amount).toLocaleString()}</p>
-                    <p className={dashboardStyles.transactionDate}>{new Date(transaction.date).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              );
-            })}
-
-            {incomeListForDisplay.length === 0 && (
-              <div className={dashboardStyles.emptyState}>
-                <div className={dashboardStyles.emptyIconContainer("bg-green-50")}>
-                  <DollarSign className="w-8 h-8 text-green-400" />
-                </div>
-                <p className={dashboardStyles.emptyText}>No income transactions</p>
               </div>
-            )}
-
-            {incomeListForDisplay.length > 3 && (
-              <div className={dashboardStyles.viewAllContainer}>
-                <button 
-                  onClick={() => setShowAllIncome(!showAllIncome)}
-                  className={dashboardStyles.viewAllButton}
-                >
-                  {showAllIncome ? (
-                    <>
-                      <ChevronUp className="w-5 h-5" />
-                      Show Less
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-5 h-5" />
-                      View All Income ({incomeListForDisplay.length})
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Expense Column */}
-        <div className={dashboardStyles.listContainer}>
-          <div className={dashboardStyles.listHeader}>
-            <h3 className="text-lg md:text-xl lg:text-xl xl:text-xl font-bold text-gray-800 md:mt-3 mt-3 flex items-center gap-3">
-              <ArrowDown className="w-6 h-6 text-orange-500" /> Recent Expenses{" "}
-              <span className={dashboardStyles.listSubtitle}> ({timeFrameRange.label})</span>
-            </h3>
-            <span className={dashboardStyles.expenseCountBadge}>
-              {expenseListForDisplay.length} records
-            </span>
-          </div>
-
-          <div className={dashboardStyles.transactionList}>
-            {displayedExpense.map((transaction) => {
-              const IconComponent = EXPENSE_CATEGORY_ICONS[transaction.category] || EXPENSE_CATEGORY_ICONS.Other;
-              return (
-                <div key={transaction.id} className={dashboardStyles.expenseTransactionItem}>
-                  <div className={dashboardStyles.transactionContent}>
-                    <div className={dashboardStyles.expenseIconContainer}>
-                      {IconComponent}
-                    </div>
-                    <div>
-                      <p className={dashboardStyles.transactionDescription}>{transaction.description}</p>
-                      <p className={dashboardStyles.transactionCategory}>{transaction.category}</p>
-                    </div>
-                  </div>
-                  <div className={dashboardStyles.transactionAmount}>
-                    <p className={dashboardStyles.expenseAmount}>-${Math.abs(transaction.amount).toLocaleString()}</p>
-                    <p className={dashboardStyles.transactionDate}>{new Date(transaction.date).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              );
-            })}
-
-            {expenseListForDisplay.length === 0 && (
-              <div className={dashboardStyles.emptyState}>
-                <div className={dashboardStyles.emptyIconContainer("bg-orange-50")}>
-                  <ShoppingCart className="w-8 h-8 text-orange-400" />
-                </div>
-                <p className={dashboardStyles.emptyText}>No expense transactions</p>
-              </div>
-            )}
-
-            {expenseListForDisplay.length > 3 && (
-              <div className={dashboardStyles.viewAllContainer}>
-                <button 
-                  onClick={() => setShowAllExpense(!showAllExpense)}
-                  className={dashboardStyles.viewAllButton}
-                >
-                  {showAllExpense ? (
-                    <>
-                      <ChevronUp className="w-5 h-5" />
-                      Show Less
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-5 h-5" />
-                      View All Expenses ({expenseListForDisplay.length})
-                    </>
-                  )}
-                </button>
-              </div>
+            ) : (
+              <div className="text-center text-gray-400 py-8">No recent transactions</div>
             )}
           </div>
         </div>
       </div>
+    </div>
+  );
+};
 
+export default Dashboard;
